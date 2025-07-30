@@ -22,11 +22,12 @@ namespace winui_scripts_app
             InitializeComponent();
 
             // Initialize services
+            var settingsService = new SettingsService();
             var historyService = new ExecutionHistoryService();
-            var scriptService = new ScriptService(historyService);
+            var scriptService = new ScriptService(historyService, settingsService);
 
             // Initialize ViewModel
-            ViewModel = new MainViewModel(scriptService);
+            ViewModel = new MainViewModel(scriptService, settingsService);
 
             // Set DataContext on the root element
             if (Content is FrameworkElement rootElement)
@@ -106,6 +107,9 @@ namespace winui_scripts_app
                         break;
                     case "OpenFolder":
                         ViewModel.OpenFolderCommand.Execute(null);
+                        break;
+                    case "ChangeFolder":
+                        ViewModel.ChangeFolderCommand.Execute(null);
                         break;
                 }
             }

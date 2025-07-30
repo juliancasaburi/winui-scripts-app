@@ -31,6 +31,7 @@
         <NavigationView.MenuItems>
             <NavigationViewItem Content="Refresh" Icon="Refresh" Tag="Refresh" />
             <NavigationViewItem Content="Open Scripts Folder" Icon="Folder" Tag="OpenFolder" />
+            <NavigationViewItem Content="Change Scripts Folder" Icon="Setting" Tag="ChangeFolder" />
         </NavigationView.MenuItems>
 
         <!-- Main content area -->
