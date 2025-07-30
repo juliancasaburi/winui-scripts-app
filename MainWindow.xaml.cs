@@ -1,28 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 using winui_scripts_app.Services;
 using winui_scripts_app.ViewModels;
 using winui_scripts_app.Models;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
-
 namespace winui_scripts_app
 {
     /// <summary>
-    /// An empty window that can be used on its own or navigated to within a Frame.
+    /// Main window for the Script Runner app.
     /// </summary>
     public sealed partial class MainWindow : Window
     {
@@ -44,6 +33,9 @@ namespace winui_scripts_app
             {
                 rootElement.DataContext = ViewModel;
             }
+
+            // Responsive layout handler
+            this.SizeChanged += MainWindow_SizeChanged;
         }
 
         private void RunButton_Click(object sender, RoutedEventArgs e)
@@ -59,6 +51,84 @@ namespace winui_scripts_app
             if (sender is Button button && button.Tag is ScriptInfo script)
             {
                 ViewModel.DeleteScriptCommand.Execute(script);
+            }
+        }
+
+        // Responsive layout logic for script item buttons
+        private void MainWindow_SizeChanged(object sender, WindowSizeChangedEventArgs e)
+        {
+            double width = e.Size.Width;
+
+            var root = this.Content as DependencyObject;
+            if (root == null)
+                return;
+
+            foreach (var buttonsPanel in FindVisualChildren<StackPanel>(root))
+            {
+                if (buttonsPanel.Name == "ButtonsPanel")
+                {
+                    if (width < 500)
+                    {
+                        buttonsPanel.Orientation = Orientation.Vertical;
+                        Grid.SetRow(buttonsPanel, 1);
+                        Grid.SetColumn(buttonsPanel, 0);
+                        buttonsPanel.Margin = new Thickness(0, 10, 0, 0);
+                        buttonsPanel.HorizontalAlignment = HorizontalAlignment.Left;
+
+                        foreach (var button in buttonsPanel.Children.OfType<Button>())
+                        {
+                            button.Margin = new Thickness(0, 10, 0, 0);
+                        }
+                    }
+                    else
+                    {
+                        buttonsPanel.Orientation = Orientation.Horizontal;
+                        Grid.SetRow(buttonsPanel, 0);
+                        Grid.SetColumn(buttonsPanel, 1);
+
+                        foreach (var button in buttonsPanel.Children.OfType<Button>())
+                        {
+                            button.Margin = new Thickness(10, 0, 0, 0);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void MainNavView_SelectionChanged(object sender, NavigationViewSelectionChangedEventArgs e)
+        {
+            if (e.SelectedItem is NavigationViewItem item && item.Tag is string tag)
+            {
+                switch (tag)
+                {
+                    case "Refresh":
+                        ViewModel.RefreshCommand.Execute(null);
+                        break;
+                    case "OpenFolder":
+                        ViewModel.OpenFolderCommand.Execute(null);
+                        break;
+                }
+            }
+
+            // Optionally, clear selection so the user can click the same item again
+            MainNavView.SelectedItem = null;
+        }
+
+        // Helper to find all StackPanels in the visual tree
+        private static IEnumerable<T> FindVisualChildren<T>(DependencyObject depObj) where T : DependencyObject
+        {
+            if (depObj != null)
+            {
+                int count = VisualTreeHelper.GetChildrenCount(depObj);
+                for (int i = 0; i < count; i++)
+                {
+                    DependencyObject child = VisualTreeHelper.GetChild(depObj, i);
+                    if (child is T t)
+                        yield return t;
+
+                    foreach (T childOfChild in FindVisualChildren<T>(child))
+                        yield return childOfChild;
+                }
             }
         }
     }

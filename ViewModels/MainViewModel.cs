@@ -16,7 +16,7 @@ namespace winui_scripts_app.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private readonly IScriptService _scriptService;
+        private readonly ScriptService _scriptService;
         private readonly DispatcherQueue _dispatcherQueue;
         private string _statusMessage = "Ready";
         private ScriptInfo? _selectedScript;
@@ -46,7 +46,7 @@ namespace winui_scripts_app.ViewModels
         public int ScriptCount => Scripts.Count;
         public int FolderCount => Scripts.GroupBy(s => s.DisplayFolder).Count();
 
-        public MainViewModel(IScriptService scriptService)
+        public MainViewModel(ScriptService scriptService)
         {
             _scriptService = scriptService;
             _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -59,6 +59,7 @@ namespace winui_scripts_app.ViewModels
             // Subscribe to file system events
             _scriptService.ScriptAdded += OnScriptAdded;
             _scriptService.ScriptRemoved += OnScriptRemoved;
+            _scriptService.FolderDeleted += OnFolderDeleted;
             
             // Start watching for file changes
             _scriptService.StartWatching();
@@ -232,6 +233,30 @@ namespace winui_scripts_app.ViewModels
                     
                     var folderInfo = scriptToRemove.IsInSubfolder ? $" from {scriptToRemove.Folder}" : "";
                     StatusMessage = $"Script {scriptToRemove.Name} removed{folderInfo}";
+                }
+            });
+        }
+
+        private void OnFolderDeleted(object? sender, string folderPath)
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                // Find all scripts that were in the deleted folder
+                var scriptsToRemove = Scripts.Where(s => s.FullPath.StartsWith(folderPath, StringComparison.OrdinalIgnoreCase)).ToList();
+                
+                if (scriptsToRemove.Any())
+                {
+                    foreach (var script in scriptsToRemove)
+                    {
+                        Scripts.Remove(script);
+                    }
+                    
+                    UpdateGroupedScripts();
+                    OnPropertyChanged(nameof(ScriptCount));
+                    OnPropertyChanged(nameof(FolderCount));
+                    
+                    var folderName = Path.GetFileName(folderPath);
+                    StatusMessage = $"Folder '{folderName}' deleted - removed {scriptsToRemove.Count} scripts";
                 }
             });
         }

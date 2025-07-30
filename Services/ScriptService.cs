@@ -8,7 +8,7 @@ using winui_scripts_app.Models;
 
 namespace winui_scripts_app.Services
 {
-    public class ScriptService : IScriptService
+    public class ScriptService 
     {
         private readonly string _scriptsFolder;
         private readonly IExecutionHistoryService _historyService;
@@ -16,6 +16,7 @@ namespace winui_scripts_app.Services
 
         public event EventHandler<ScriptInfo>? ScriptAdded;
         public event EventHandler<string>? ScriptRemoved;
+        public event EventHandler<string>? FolderDeleted; // New event for folder deletion
 
         private static readonly string[] SupportedExtensions = new[] { ".vbs", ".bat", ".cmd", ".ps1" };
 
@@ -148,7 +149,7 @@ namespace winui_scripts_app.Services
             {
                 Filter = "*.*",
                 IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName
+                NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName
             };
             _watcher.Created += OnScriptFileCreated;
             _watcher.Deleted += OnScriptFileDeleted;
@@ -185,6 +186,23 @@ namespace winui_scripts_app.Services
 
         private void OnScriptFileDeleted(object sender, FileSystemEventArgs e)
         {
+            // Check if this is a directory deletion
+            if (Directory.Exists(e.FullPath) == false && File.Exists(e.FullPath) == false)
+            {
+                // This could be either a file or directory that was deleted
+                // We need to check if it's a directory path by seeing if any scripts were in this path
+                var relativePath = Path.GetRelativePath(_scriptsFolder, e.FullPath);
+                
+                // If the path doesn't have an extension, it's likely a directory
+                if (string.IsNullOrEmpty(Path.GetExtension(e.FullPath)))
+                {
+                    // This is a directory deletion - notify about the folder
+                    FolderDeleted?.Invoke(this, e.FullPath);
+                    return;
+                }
+            }
+
+            // Handle file deletion as before
             if (!SupportedExtensions.Contains(Path.GetExtension(e.FullPath), StringComparer.OrdinalIgnoreCase))
                 return;
             ScriptRemoved?.Invoke(this, e.FullPath);
