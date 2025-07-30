@@ -20,21 +20,39 @@ namespace winui_scripts_app.ViewModels
         private readonly DispatcherQueue _dispatcherQueue;
         private string _statusMessage = "Ready";
         private ScriptInfo? _selectedScript;
+        private string _searchText = string.Empty;
 
+        // Original collections (unfiltered)
         public ObservableCollection<ScriptInfo> Scripts { get; } = new();
-
+        
         // Grouped collection for folder organization
         public ObservableCollection<ScriptGroup> GroupedScripts { get; } = new();
+        
+        // Filtered collections for display
+        public ObservableCollection<ScriptGroup> FilteredGroupedScripts { get; } = new();
 
         public ICommand RefreshCommand { get; }
         public ICommand RunScriptCommand { get; }
         public ICommand DeleteScriptCommand { get; }
         public ICommand OpenFolderCommand { get; }
+        public ICommand ClearSearchCommand { get; }
 
         public string StatusMessage
         {
             get => _statusMessage;
             set => SetProperty(ref _statusMessage, value);
+        }
+
+        public string SearchText
+        {
+            get => _searchText;
+            set
+            {
+                if (SetProperty(ref _searchText, value))
+                {
+                    ApplySearch();
+                }
+            }
         }
 
         public ScriptInfo? SelectedScript
@@ -44,7 +62,9 @@ namespace winui_scripts_app.ViewModels
         }
 
         public int ScriptCount => Scripts.Count;
+        public int FilteredScriptCount => FilteredGroupedScripts.SelectMany(g => g.Scripts).Count();
         public int FolderCount => Scripts.GroupBy(s => s.DisplayFolder).Count();
+        public bool IsSearchActive => !string.IsNullOrWhiteSpace(SearchText);
 
         public MainViewModel(ScriptService scriptService)
         {
@@ -55,6 +75,7 @@ namespace winui_scripts_app.ViewModels
             RunScriptCommand = new RelayCommand<ScriptInfo>(async script => await RunScriptAsync(script));
             DeleteScriptCommand = new RelayCommand<ScriptInfo>(async script => await DeleteScriptAsync(script));
             OpenFolderCommand = new RelayCommand(OpenScriptsFolder);
+            ClearSearchCommand = new RelayCommand(ClearSearch);
 
             // Subscribe to file system events
             _scriptService.ScriptAdded += OnScriptAdded;
@@ -66,6 +87,52 @@ namespace winui_scripts_app.ViewModels
             
             // Load initial scripts
             Task.Run(async () => await RefreshScriptsAsync());
+        }
+
+        private void ApplySearch()
+        {
+            FilteredGroupedScripts.Clear();
+            
+            if (string.IsNullOrWhiteSpace(SearchText))
+            {
+                // No search - show all groups
+                foreach (var group in GroupedScripts)
+                {
+                    FilteredGroupedScripts.Add(group);
+                }
+            }
+            else
+            {
+                // Apply search filter
+                var searchLower = SearchText.ToLowerInvariant();
+                var filteredScripts = Scripts.Where(s => 
+                    s.Name.ToLowerInvariant().Contains(searchLower) ||
+                    s.Folder.ToLowerInvariant().Contains(searchLower) ||
+                    s.DisplayFolder.ToLowerInvariant().Contains(searchLower)
+                ).ToList();
+
+                // Create filtered groups
+                var filteredGroups = ScriptGroup.GroupScripts(filteredScripts);
+                foreach (var group in filteredGroups)
+                {
+                    FilteredGroupedScripts.Add(group);
+                }
+            }
+
+            OnPropertyChanged(nameof(FilteredScriptCount));
+            OnPropertyChanged(nameof(IsSearchActive));
+            
+            // Update status message if searching
+            if (IsSearchActive)
+            {
+                var resultText = FilteredScriptCount == 1 ? "script" : "scripts";
+                StatusMessage = $"Found {FilteredScriptCount} {resultText} matching '{SearchText}'";
+            }
+        }
+
+        private void ClearSearch()
+        {
+            SearchText = string.Empty;
         }
 
         private async Task RefreshScriptsAsync()
@@ -88,11 +155,17 @@ namespace winui_scripts_app.ViewModels
                     // Update grouped collection
                     UpdateGroupedScripts();
                     
+                    // Apply current search filter
+                    ApplySearch();
+                    
                     OnPropertyChanged(nameof(ScriptCount));
                     OnPropertyChanged(nameof(FolderCount));
                     
-                    var folderText = FolderCount == 1 ? "folder" : "folders";
-                    StatusMessage = $"Loaded {Scripts.Count} scripts in {FolderCount} {folderText}";
+                    if (!IsSearchActive)
+                    {
+                        var folderText = FolderCount == 1 ? "folder" : "folders";
+                        StatusMessage = $"Loaded {Scripts.Count} scripts in {FolderCount} {folderText}";
+                    }
                 });
             }
             catch (Exception ex)
@@ -161,6 +234,7 @@ namespace winui_scripts_app.ViewModels
                 {
                     Scripts.Remove(script);
                     UpdateGroupedScripts();
+                    ApplySearch(); // Refresh filtered collections
                     OnPropertyChanged(nameof(ScriptCount));
                     OnPropertyChanged(nameof(FolderCount));
                     StatusMessage = $"Script {script.Name} deleted successfully";
@@ -210,6 +284,7 @@ namespace winui_scripts_app.ViewModels
                 {
                     Scripts.Add(script);
                     UpdateGroupedScripts();
+                    ApplySearch(); // Refresh filtered collections
                     OnPropertyChanged(nameof(ScriptCount));
                     OnPropertyChanged(nameof(FolderCount));
                     
@@ -228,6 +303,7 @@ namespace winui_scripts_app.ViewModels
                 {
                     Scripts.Remove(scriptToRemove);
                     UpdateGroupedScripts();
+                    ApplySearch(); // Refresh filtered collections
                     OnPropertyChanged(nameof(ScriptCount));
                     OnPropertyChanged(nameof(FolderCount));
                     
@@ -252,6 +328,7 @@ namespace winui_scripts_app.ViewModels
                     }
                     
                     UpdateGroupedScripts();
+                    ApplySearch(); // Refresh filtered collections
                     OnPropertyChanged(nameof(ScriptCount));
                     OnPropertyChanged(nameof(FolderCount));
                     

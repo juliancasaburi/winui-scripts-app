@@ -24,6 +24,7 @@
 
         <NavigationView.Resources>
             <helpers:ZeroToVisibilityConverter x:Key="ZeroToVisibilityConverter"/>
+            <helpers:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         </NavigationView.Resources>
 
         <!-- Pane items -->
@@ -36,13 +37,71 @@
         <NavigationView.Content>
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
+                <!-- Search Filter -->
+                <Border
+                    Grid.Row="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox
+                            Grid.Column="0"
+                            Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            PlaceholderText="Search scripts by name or folder..."
+                            x:Name="SearchBox">
+                            <TextBox.Resources>
+                                <!-- Keep border/corners as you already set -->
+                                <Style TargetType="TextBox">
+                                    <Setter Property="BorderThickness" Value="1"/>
+                                    <Setter Property="CornerRadius" Value="8"/>
+                                </Style>
+
+                                <!-- Remove the square hover/press background of the clear (delete) button -->
+                                <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlButtonBackgroundPressed" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrush" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrushPointerOver" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlButtonBorderBrushPressed" Color="Transparent"/>
+                            </TextBox.Resources>
+                        </TextBox>
+
+
+                        <StackPanel 
+                            Grid.Column="1" 
+                            Orientation="Horizontal" 
+                            Margin="8,0,0,0">
+                            <TextBlock
+                                Text="{Binding FilteredScriptCount}"
+                                VerticalAlignment="Center"
+                                Margin="12,0,0,0"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Visibility="{Binding IsSearchActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <TextBlock
+                                Text=" results"
+                                VerticalAlignment="Center"
+                                Margin="2,0,0,0"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Visibility="{Binding IsSearchActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- Script List with Folder Grouping -->
-                <ScrollViewer Grid.Row="0" Padding="16" x:Name="ScriptListScrollViewer">
-                    <ItemsControl ItemsSource="{Binding GroupedScripts}" x:Name="GroupedScriptsList">
+                <ScrollViewer Grid.Row="1" Padding="16" x:Name="ScriptListScrollViewer">
+                    <ItemsControl ItemsSource="{Binding FilteredGroupedScripts}" x:Name="GroupedScriptsList">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,0,0,16">
@@ -184,7 +243,7 @@
 
                 <!-- Empty State -->
                 <StackPanel
-                    Grid.Row="0"
+                    Grid.Row="1"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Visibility="{Binding Scripts.Count, Converter={StaticResource ZeroToVisibilityConverter}}">
@@ -222,7 +281,7 @@
 
                 <!-- Status Bar -->
                 <Border
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="0,1,0,0">
