@@ -1,4 +1,4 @@
-# Script Runner - WinUI 3 Application
+﻿# Script Runner - WinUI 3 Application
 
 A modern .NET 8 WinUI 3 application that provides a user-friendly interface for managing and executing VBScript files.
 
@@ -40,12 +40,12 @@ A modern .NET 8 WinUI 3 application that provides a user-friendly interface for 
 The application monitors the following folder:
 ```
 %USERPROFILE%\Documents\Scripts\
-??? script1.vbs
-??? script2.vbs
-??? subfolder\
-?   ??? another_script.vbs
-??? utilities\
-    ??? helper_script.vbs
+├── script1.vbs
+├── script2.vbs
+├── subfolder\
+│   └── another_script.vbs
+└── utilities\
+    └── helper_script.vbs
 ```
 
 ## Sample VBScript
