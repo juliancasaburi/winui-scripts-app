@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Microsoft.UI.Dispatching;
+using Windows.Storage.Pickers;
 using winui_scripts_app.Helpers;
 using winui_scripts_app.Models;
 using winui_scripts_app.Services;
@@ -17,10 +18,12 @@ namespace winui_scripts_app.ViewModels
     public class MainViewModel : INotifyPropertyChanged
     {
         private readonly ScriptService _scriptService;
+        private readonly ISettingsService _settingsService;
         private readonly DispatcherQueue _dispatcherQueue;
         private string _statusMessage = "Ready";
         private ScriptInfo? _selectedScript;
         private string _searchText = string.Empty;
+        private string _currentScriptsFolder = string.Empty;
 
         // Original collections (unfiltered)
         public ObservableCollection<ScriptInfo> Scripts { get; } = new();
@@ -36,6 +39,7 @@ namespace winui_scripts_app.ViewModels
         public ICommand DeleteScriptCommand { get; }
         public ICommand OpenFolderCommand { get; }
         public ICommand ClearSearchCommand { get; }
+        public ICommand ChangeFolderCommand { get; }
 
         public string StatusMessage
         {
@@ -61,14 +65,21 @@ namespace winui_scripts_app.ViewModels
             set => SetProperty(ref _selectedScript, value);
         }
 
+        public string CurrentScriptsFolder
+        {
+            get => _currentScriptsFolder;
+            set => SetProperty(ref _currentScriptsFolder, value);
+        }
+
         public int ScriptCount => Scripts.Count;
         public int FilteredScriptCount => FilteredGroupedScripts.SelectMany(g => g.Scripts).Count();
         public int FolderCount => Scripts.GroupBy(s => s.DisplayFolder).Count();
         public bool IsSearchActive => !string.IsNullOrWhiteSpace(SearchText);
 
-        public MainViewModel(ScriptService scriptService)
+        public MainViewModel(ScriptService scriptService, ISettingsService settingsService)
         {
             _scriptService = scriptService;
+            _settingsService = settingsService;
             _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
             RefreshCommand = new RelayCommand(async () => await RefreshScriptsAsync());
@@ -76,11 +87,18 @@ namespace winui_scripts_app.ViewModels
             DeleteScriptCommand = new RelayCommand<ScriptInfo>(async script => await DeleteScriptAsync(script));
             OpenFolderCommand = new RelayCommand(OpenScriptsFolder);
             ClearSearchCommand = new RelayCommand(ClearSearch);
+            ChangeFolderCommand = new RelayCommand(async () => await ChangeFolderAsync());
 
             // Subscribe to file system events
             _scriptService.ScriptAdded += OnScriptAdded;
             _scriptService.ScriptRemoved += OnScriptRemoved;
             _scriptService.FolderDeleted += OnFolderDeleted;
+            
+            // Subscribe to settings changes
+            _settingsService.ScriptsFolderChanged += OnScriptsFolderChanged;
+            
+            // Initialize current folder display
+            CurrentScriptsFolder = _settingsService.ScriptsFolder;
             
             // Start watching for file changes
             _scriptService.StartWatching();
@@ -254,7 +272,7 @@ namespace winui_scripts_app.ViewModels
         {
             try
             {
-                var scriptsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scripts");
+                var scriptsFolder = _settingsService.ScriptsFolder;
                 
                 if (!Directory.Exists(scriptsFolder))
                 {
@@ -273,6 +291,67 @@ namespace winui_scripts_app.ViewModels
             {
                 StatusMessage = $"Error opening scripts folder: {ex.Message}";
             }
+        }
+
+        private async Task ChangeFolderAsync()
+        {
+            try
+            {
+                StatusMessage = "Please select a folder in the dialog that will open...";
+                
+                var folderPicker = new FolderPicker();
+                folderPicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+                folderPicker.FileTypeFilter.Add("*");
+
+                // Initialize with the current window handle - this is required for WinUI 3
+                var window = App.MainWindow;
+                if (window != null)
+                {
+                    var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+                    WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
+                }
+
+                var folder = await folderPicker.PickSingleFolderAsync();
+                if (folder != null)
+                {
+                    StatusMessage = "Changing scripts folder...";
+                    await _settingsService.SetScriptsFolderAsync(folder.Path);
+                    
+                    // Force an immediate refresh after changing the folder
+                    await RefreshScriptsAsync();
+                }
+                else
+                {
+                    StatusMessage = "Folder selection cancelled.";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error changing scripts folder: {ex.Message}";
+            }
+        }
+
+        private async void OnScriptsFolderChanged(object? sender, string newFolderPath)
+        {
+            // Update the UI immediately
+            CurrentScriptsFolder = newFolderPath;
+            
+            // Clear current scripts immediately to show the change
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                Scripts.Clear();
+                GroupedScripts.Clear();
+                FilteredGroupedScripts.Clear();
+                OnPropertyChanged(nameof(ScriptCount));
+                OnPropertyChanged(nameof(FolderCount));
+                StatusMessage = "Loading scripts from new folder...";
+            });
+            
+            // Wait a brief moment for the ScriptService to restart watching
+            await Task.Delay(100);
+            
+            // Then refresh scripts from new folder
+            await RefreshScriptsAsync();
         }
 
         private void OnScriptAdded(object? sender, ScriptInfo script)

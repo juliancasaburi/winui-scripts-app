@@ -10,7 +10,7 @@ namespace winui_scripts_app.Services
 {
     public class ScriptService 
     {
-        private readonly string _scriptsFolder;
+        private readonly ISettingsService _settingsService;
         private readonly IExecutionHistoryService _historyService;
         private FileSystemWatcher? _watcher;
 
@@ -20,32 +20,54 @@ namespace winui_scripts_app.Services
 
         private static readonly string[] SupportedExtensions = new[] { ".vbs", ".bat", ".cmd", ".ps1" };
 
-        public ScriptService(IExecutionHistoryService historyService)
+        public ScriptService(IExecutionHistoryService historyService, ISettingsService settingsService)
         {
             _historyService = historyService;
-            _scriptsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Scripts");
+            _settingsService = settingsService;
+            
+            // Subscribe to settings changes
+            _settingsService.ScriptsFolderChanged += OnScriptsFolderChanged;
             
             // Ensure the scripts folder exists
-            if (!Directory.Exists(_scriptsFolder))
+            EnsureScriptsFolderExists();
+        }
+
+        private void EnsureScriptsFolderExists()
+        {
+            if (!Directory.Exists(_settingsService.ScriptsFolder))
             {
-                Directory.CreateDirectory(_scriptsFolder);
+                Directory.CreateDirectory(_settingsService.ScriptsFolder);
             }
+        }
+
+        private void OnScriptsFolderChanged(object? sender, string newFolderPath)
+        {
+            // Stop watching the old folder
+            StopWatching();
+            
+            // Ensure new folder exists
+            EnsureScriptsFolderExists();
+            
+            // Start watching the new folder
+            StartWatching();
         }
 
         public async Task<List<ScriptInfo>> GetScriptsAsync()
         {
             var scripts = new List<ScriptInfo>();
-            if (!Directory.Exists(_scriptsFolder))
+            var scriptsFolder = _settingsService.ScriptsFolder;
+            
+            if (!Directory.Exists(scriptsFolder))
                 return scripts;
 
-            var files = Directory.GetFiles(_scriptsFolder, "*.*", SearchOption.AllDirectories)
+            var files = Directory.GetFiles(scriptsFolder, "*.*", SearchOption.AllDirectories)
                 .Where(f => SupportedExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
 
             foreach (var file in files)
             {
                 var fileInfo = new FileInfo(file);
                 var lastExecution = await _historyService.GetLastExecutionAsync(file);
-                var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(_scriptsFolder, file)) ?? string.Empty;
+                var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(scriptsFolder, file)) ?? string.Empty;
                 scripts.Add(new ScriptInfo
                 {
                     Name = Path.GetFileName(file),
@@ -80,7 +102,7 @@ namespace winui_scripts_app.Services
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             CreateNoWindow = true,
-                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _scriptsFolder
+                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _settingsService.ScriptsFolder
                         };
                         break;
                     case ".bat":
@@ -93,7 +115,7 @@ namespace winui_scripts_app.Services
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             CreateNoWindow = true,
-                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _scriptsFolder
+                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _settingsService.ScriptsFolder
                         };
                         break;
                     case ".ps1":
@@ -105,7 +127,7 @@ namespace winui_scripts_app.Services
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             CreateNoWindow = true,
-                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _scriptsFolder
+                            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? _settingsService.ScriptsFolder
                         };
                         break;
                     default:
@@ -145,7 +167,12 @@ namespace winui_scripts_app.Services
         {
             if (_watcher != null)
                 return;
-            _watcher = new FileSystemWatcher(_scriptsFolder)
+                
+            var scriptsFolder = _settingsService.ScriptsFolder;
+            if (!Directory.Exists(scriptsFolder))
+                return;
+                
+            _watcher = new FileSystemWatcher(scriptsFolder)
             {
                 Filter = "*.*",
                 IncludeSubdirectories = true,
@@ -169,7 +196,8 @@ namespace winui_scripts_app.Services
             if (!SupportedExtensions.Contains(Path.GetExtension(e.FullPath), StringComparer.OrdinalIgnoreCase))
                 return;
             var fileInfo = new FileInfo(e.FullPath);
-            var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(_scriptsFolder, e.FullPath)) ?? string.Empty;
+            var scriptsFolder = _settingsService.ScriptsFolder;
+            var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(scriptsFolder, e.FullPath)) ?? string.Empty;
             var scriptInfo = new ScriptInfo
             {
                 Name = Path.GetFileName(e.FullPath),
@@ -191,7 +219,7 @@ namespace winui_scripts_app.Services
             {
                 // This could be either a file or directory that was deleted
                 // We need to check if it's a directory path by seeing if any scripts were in this path
-                var relativePath = Path.GetRelativePath(_scriptsFolder, e.FullPath);
+                var relativePath = Path.GetRelativePath(_settingsService.ScriptsFolder, e.FullPath);
                 
                 // If the path doesn't have an extension, it's likely a directory
                 if (string.IsNullOrEmpty(Path.GetExtension(e.FullPath)))
@@ -215,7 +243,8 @@ namespace winui_scripts_app.Services
             ScriptRemoved?.Invoke(this, e.OldFullPath);
             await Task.Delay(100);
             var fileInfo = new FileInfo(e.FullPath);
-            var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(_scriptsFolder, e.FullPath)) ?? string.Empty;
+            var scriptsFolder = _settingsService.ScriptsFolder;
+            var relativeFolder = Path.GetDirectoryName(Path.GetRelativePath(scriptsFolder, e.FullPath)) ?? string.Empty;
             var scriptInfo = new ScriptInfo
             {
                 Name = Path.GetFileName(e.FullPath),
